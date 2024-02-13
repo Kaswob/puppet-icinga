@@ -40,20 +40,26 @@
 # @param api_pass
 #   Icinga 2 API password.
 #
+# @param fileshipper_install_method
+#    Installation method of fileshipper
+# @param director_install_method
+#    Installation method of director
 class icinga::web::director (
-  Icinga::Secret           $db_pass,
-  Icinga::Secret           $api_pass,
-  String                   $endpoint,
-  Stdlib::Ensure::Service  $service_ensure  = 'running',
-  Boolean                  $service_enable  = true,
-  Enum['mysql', 'pgsql']   $db_type         = 'mysql',
-  Stdlib::Host             $db_host         = 'localhost',
-  Optional[Stdlib::Port]   $db_port         = undef,
-  String                   $db_name         = 'director',
-  String                   $db_user         = 'director',
-  Boolean                  $manage_database = false,
-  Stdlib::Host             $api_host        = 'localhost',
-  String                   $api_user        = 'director',
+  Icinga::Secret                   $db_pass,
+  Icinga::Secret                   $api_pass,
+  String                           $endpoint,
+  Stdlib::Ensure::Service          $service_ensure  = 'running',
+  Boolean                          $service_enable  = true,
+  Enum['mysql', 'pgsql']           $db_type         = 'mysql',
+  Stdlib::Host                     $db_host         = 'localhost',
+  Optional[Stdlib::Port]           $db_port         = undef,
+  String                           $db_name         = 'director',
+  String                           $db_user         = 'director',
+  Boolean                          $manage_database = false,
+  Stdlib::Host                     $api_host        = 'localhost',
+  String                           $api_user        = 'director',
+  Enum['package', 'git']           $fileshipper_install_method = 'package',
+  Enum['package', 'git', 'none']   $director_install_method = 'package',
 ) {
   icinga::prepare_web('Director')
 
@@ -82,7 +88,7 @@ class icinga::web::director (
   }
 
   class { 'icingaweb2::module::director':
-    install_method => 'package',
+    install_method => $director_install_method,
     db_type        => $db_type,
     db_host        => $_db_host,
     db_port        => $db_port,
@@ -99,19 +105,20 @@ class icinga::web::director (
   }
 
   class { 'icingaweb2::module::fileshipper':
-    install_method   => 'package',
+    install_method   => $fileshipper_install_method,
   }
 
   # dirty hack around deamon restart
   # after pdo_psql is available
-  Package[$icingaweb2::module::director::package_name, $icingaweb2::module::fileshipper::package_name]
-  ~> exec { 'restart icinga-director daemon':
-    path        => $facts['path'],
-    command     => 'systemctl restart icinga-director',
-    refreshonly => true,
-    onlyif      => 'systemctl status icinga-director',
+  if $fileshipper_install_method == 'package' {
+    Package[$icingaweb2::module::director::package_name, $icingaweb2::module::fileshipper::package_name]
+    ~> exec { 'restart icinga-director daemon':
+      path        => $facts['path'],
+      command     => 'systemctl restart icinga-director',
+      refreshonly => true,
+      onlyif      => 'systemctl status icinga-director',
+    }
   }
-
   if versioncmp($icingaweb2_version, '4.0.0') < 0 {
     class { 'icingaweb2::module::director::service':
       ensure => $service_ensure,
